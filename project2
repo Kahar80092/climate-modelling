@@ -1,0 +1,287 @@
+# ==========================================================
+# COCA-COLA STOCK ANALYSIS - ML, FINANCIAL & DATA ANALYSIS
+# ==========================================================
+
+# -------------------------
+# 1. IMPORT LIBRARIES
+# -------------------------
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from datetime import datetime, timedelta
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, mean_absolute_percentage_error
+
+import warnings
+warnings.filterwarnings("ignore")
+
+print("\n" + "="*50)
+print("COCA-COLA STOCK ANALYSIS PROJECT")
+print("="*50 + "\n")
+
+# -------------------------
+# 2. LOAD DATASETS
+# -------------------------
+print("Loading datasets...\n")
+
+stock_history = pd.read_csv("Coca-Cola_stock_history.csv")
+stock_info = pd.read_csv("Coca-Cola_stock_info.csv")
+
+print("Stock History Shape:", stock_history.shape)
+print("Stock Info Shape:", stock_info.shape)
+
+print("\nStock History Columns:")
+print(stock_history.columns.tolist())
+
+print("\nFirst 5 rows of Stock History:")
+print(stock_history.head())
+
+print("\nFirst 10 rows of Stock Info:")
+print(stock_info.head(10))
+
+# -------------------------
+# 3. DATA PREPROCESSING
+# -------------------------
+print("\n" + "="*50)
+print("DATA PREPROCESSING")
+print("="*50 + "\n")
+
+# Convert Date column to datetime - handle mixed formats
+stock_history['Date'] = pd.to_datetime(stock_history['Date'], format='mixed', utc=True)
+stock_history['Date'] = stock_history['Date'].dt.tz_localize(None)
+
+# Sort by date
+stock_history = stock_history.sort_values('Date').reset_index(drop=True)
+
+# Check missing values
+print("Missing Values:")
+print(stock_history.isnull().sum())
+
+# Fill missing values if any
+stock_history = stock_history.fillna(method='ffill')
+
+print("\nDataset cleaned and sorted by date")
+
+# -------------------------
+# 4. EXPLORATORY DATA ANALYSIS
+# -------------------------
+print("\n" + "="*50)
+print("EXPLORATORY DATA ANALYSIS")
+print("="*50 + "\n")
+
+print("Statistical Summary:")
+print(stock_history[['Open', 'High', 'Low', 'Close', 'Volume']].describe())
+
+# Calculate additional metrics
+stock_history['Daily_Return'] = stock_history['Close'].pct_change() * 100
+stock_history['Price_Range'] = stock_history['High'] - stock_history['Low']
+stock_history['MA_20'] = stock_history['Close'].rolling(window=20).mean()
+stock_history['MA_50'] = stock_history['Close'].rolling(window=50).mean()
+stock_history['MA_200'] = stock_history['Close'].rolling(window=200).mean()
+stock_history['Volatility'] = stock_history['Daily_Return'].rolling(window=20).std()
+
+print("\nNew features created: Daily_Return, Price_Range, Moving Averages (20, 50, 200), Volatility")
+
+# -------------------------
+# 5. DATA VISUALIZATION - Historical Price
+# -------------------------
+print("\nGenerating visualizations...")
+
+plt.figure(figsize=(14, 6))
+plt.plot(stock_history['Date'], stock_history['Close'], label='Close Price', linewidth=2)
+plt.plot(stock_history['Date'], stock_history['MA_20'], label='20-day MA', alpha=0.7)
+plt.plot(stock_history['Date'], stock_history['MA_50'], label='50-day MA', alpha=0.7)
+plt.plot(stock_history['Date'], stock_history['MA_200'], label='200-day MA', alpha=0.7)
+plt.xlabel('Date')
+plt.ylabel('Price ($)')
+plt.title('Coca-Cola Stock Price with Moving Averages')
+plt.legend()
+plt.tight_layout()
+plt.savefig("stock_price_trends.png", dpi=100)
+plt.close()
+
+# -------------------------
+# 6. RETURNS DISTRIBUTION
+# -------------------------
+plt.figure(figsize=(10, 6))
+plt.hist(stock_history['Daily_Return'].dropna(), bins=50, edgecolor='black')
+plt.xlabel('Daily Return (%)')
+plt.ylabel('Frequency')
+plt.title('Distribution of Daily Returns')
+plt.savefig("returns_distribution.png", dpi=100)
+plt.close()
+
+# -------------------------
+# 7. VOLATILITY OVER TIME
+# -------------------------
+plt.figure(figsize=(14, 5))
+plt.plot(stock_history['Date'], stock_history['Volatility'], color='red', linewidth=1.5)
+plt.xlabel('Date')
+plt.ylabel('Volatility (%)')
+plt.title('Coca-Cola Stock Volatility Over Time')
+plt.tight_layout()
+plt.savefig("volatility_trends.png", dpi=100)
+plt.close()
+
+# -------------------------
+# 8. PREPARE DATA FOR ML MODEL
+# -------------------------
+print("\nPreparing data for ML models...")
+
+# Create features for prediction
+stock_data = stock_history[['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Daily_Return', 'Price_Range', 'MA_20', 'MA_50', 'MA_200', 'Volatility']].copy()
+stock_data = stock_data.dropna()
+
+# Create target variable (predict next day's closing price)
+stock_data['Next_Close'] = stock_data['Close'].shift(-1)
+stock_data = stock_data.dropna()
+
+# Select features
+feature_cols = ['Open', 'High', 'Low', 'Volume', 'Price_Range', 'MA_20', 'MA_50', 'MA_200', 'Volatility']
+X = stock_data[feature_cols]
+y = stock_data['Next_Close']
+
+# Scale features
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# Train-test split (80-20 with time-based split for time series)
+split_idx = int(len(X) * 0.8)
+X_train, X_test = X_scaled[:split_idx], X_scaled[split_idx:]
+y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
+
+print(f"Training set size: {X_train.shape}")
+print(f"Testing set size: {X_test.shape}")
+
+# -------------------------
+# 9. TRAIN MULTIPLE ML MODELS
+# -------------------------
+print("\n" + "="*50)
+print("MACHINE LEARNING MODELS")
+print("="*50 + "\n")
+
+# Model 1: Linear Regression (baseline)
+print("Training Linear Regression...")
+lr_model = LinearRegression()
+lr_model.fit(X_train, y_train)
+lr_pred = lr_model.predict(X_test)
+lr_r2 = r2_score(y_test, lr_pred)
+lr_mae = mean_absolute_error(y_test, lr_pred)
+lr_mape = mean_absolute_percentage_error(y_test, lr_pred)
+print("Linear Regression - R2 Score: {:.4f}, MAE: ${:.4f}, MAPE: {:.2f}%".format(lr_r2, lr_mae, lr_mape))
+
+# Model 2: Random Forest
+print("Training Random Forest Regressor...")
+rf_model = RandomForestRegressor(n_estimators=50, max_depth=10, min_samples_split=5, random_state=42, n_jobs=-1)
+rf_model.fit(X_train, y_train)
+rf_pred = rf_model.predict(X_test)
+rf_r2 = r2_score(y_test, rf_pred)
+rf_mae = mean_absolute_error(y_test, rf_pred)
+rf_mape = mean_absolute_percentage_error(y_test, rf_pred)
+print("Random Forest - R2 Score: {:.4f}, MAE: ${:.4f}, MAPE: {:.2f}%".format(rf_r2, rf_mae, rf_mape))
+
+# Model 3: Gradient Boosting
+print("Training Gradient Boosting Regressor...")
+gb_model = GradientBoostingRegressor(n_estimators=50, max_depth=3, learning_rate=0.05, random_state=42, subsample=0.8)
+gb_model.fit(X_train, y_train)
+gb_pred = gb_model.predict(X_test)
+gb_r2 = r2_score(y_test, gb_pred)
+gb_mae = mean_absolute_error(y_test, gb_pred)
+gb_mape = mean_absolute_percentage_error(y_test, gb_pred)
+print("Gradient Boosting - R2 Score: {:.4f}, MAE: ${:.4f}, MAPE: {:.2f}%".format(gb_r2, gb_mae, gb_mape))
+
+# -------------------------
+# 10. MODEL COMPARISON
+# -------------------------
+print("\n" + "="*50)
+print("MODEL PERFORMANCE COMPARISON")
+print("="*50)
+
+models_comparison = pd.DataFrame({
+    'Model': ['Linear Regression', 'Random Forest', 'Gradient Boosting'],
+    'R2_Score': [lr_r2, rf_r2, gb_r2],
+    'MAE': [lr_mae, rf_mae, gb_mae],
+    'MAPE': [lr_mape, rf_mape, gb_mape]
+})
+
+print("\n", models_comparison)
+
+# Select best model
+best_model_idx = models_comparison['R2_Score'].idxmax()
+best_model_name = models_comparison.iloc[best_model_idx]['Model']
+print("\n[BEST MODEL]: {}".format(best_model_name))
+
+# -------------------------
+# 11. PREDICTIONS VS ACTUAL
+# -------------------------
+plt.figure(figsize=(14, 6))
+dates_test = stock_data['Date'].iloc[split_idx:].reset_index(drop=True)
+plt.plot(dates_test, y_test.values, label='Actual Price', linewidth=2)
+plt.plot(dates_test, lr_pred, label='Linear Regression Prediction', alpha=0.8, linewidth=1.5)
+plt.plot(dates_test, rf_pred, label='Random Forest Prediction', alpha=0.7, linewidth=1)
+plt.xlabel('Date')
+plt.ylabel('Stock Price ($)')
+plt.title('Actual vs Predicted Stock Prices')
+plt.legend()
+plt.tight_layout()
+plt.savefig("predictions_vs_actual.png", dpi=100)
+plt.close()
+
+# -------------------------
+# 12. FEATURE IMPORTANCE
+# -------------------------
+importances = rf_model.feature_importances_
+feature_importance_df = pd.DataFrame({
+    'Feature': feature_cols,
+    'Importance': importances
+}).sort_values(by='Importance', ascending=False)
+
+print("\nTop Features for Prediction:")
+print(feature_importance_df)
+
+plt.figure(figsize=(10, 6))
+sns.barplot(x='Importance', y='Feature', data=feature_importance_df)
+plt.title('Feature Importance - Random Forest')
+plt.tight_layout()
+plt.savefig("feature_importance.png", dpi=100)
+plt.close()
+
+# -------------------------
+# 13. FINANCIAL ANALYSIS METRICS
+# -------------------------
+print("\n" + "="*50)
+print("FINANCIAL ANALYSIS")
+print("="*50)
+
+# Calculate financial metrics
+total_return = ((stock_history['Close'].iloc[-1] / stock_history['Close'].iloc[0]) - 1) * 100
+avg_daily_return = stock_history['Daily_Return'].mean()
+annual_volatility = stock_history['Daily_Return'].std() * np.sqrt(252)
+avg_volume = stock_history['Volume'].mean()
+price_range = stock_history['Close'].max() - stock_history['Close'].min()
+
+print(f"\nTotal Return: {total_return:.2f}%")
+print(f"Average Daily Return: {avg_daily_return:.4f}%")
+print(f"Annual Volatility: {annual_volatility:.2f}%")
+print(f"Average Daily Volume: {avg_volume:,.0f}")
+print(f"Price Range: ${stock_history['Close'].min():.2f} - ${stock_history['Close'].max():.2f}")
+
+# -------------------------
+# 14. FINAL SUMMARY
+# -------------------------
+print("\n" + "="*50)
+print("PROJECT SUMMARY")
+print("="*50)
+print("[OK] Data Analysis: Complete")
+print("[OK] Machine Learning Models: 3 trained and compared")
+print("[OK] Best Model: {} (R2: {:.4f})".format(best_model_name, models_comparison.iloc[best_model_idx]['R2_Score']))
+print("[OK] Visualizations: Generated and saved")
+print("[OK] Financial Metrics: Calculated")
+print("\n[OK] PROJECT EXECUTION COMPLETED SUCCESSFULLY!")
+print("Ready for internship submission.\n")
+
