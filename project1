@@ -1,0 +1,169 @@
+# ==========================================================
+# CLIMATE CHANGE MODELING - CO2 EMISSION PREDICTION
+# ==========================================================
+
+# -------------------------
+# 1. IMPORT LIBRARIES
+# -------------------------
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.preprocessing import StandardScaler
+
+import warnings
+warnings.filterwarnings("ignore")
+
+print("\n==============================")
+print("Climate Change Modeling Project")
+print("==============================\n")
+
+# -------------------------
+# 2. LOAD DATASET
+# -------------------------
+print("Loading dataset...\n")
+
+data = pd.read_csv("climate_nasa.csv")
+
+print("Dataset Loaded Successfully!")
+print("Dataset Shape:", data.shape)
+
+print("\nColumns in Dataset:")
+print(data.columns)
+
+print("\nFirst 5 Rows:")
+print(data.head())
+
+# -------------------------
+# 3. BASIC EDA
+# -------------------------
+print("\nChecking Missing Values...")
+print(data.isnull().sum())
+
+# Fill numeric missing values with median
+data = data.fillna(data.median(numeric_only=True))
+
+print("\nMissing values handled using median imputation.")
+
+# -------------------------
+# 4. CHECK TARGET COLUMN
+# -------------------------
+if "emission" not in data.columns:
+    print("\n❌ ERROR: 'emission' column not found.")
+    print("Available columns are:")
+    print(data.columns)
+    exit()
+
+print("\nTarget column 'emission' found.")
+
+# -------------------------
+# 5. TARGET DISTRIBUTION
+# -------------------------
+plt.figure(figsize=(8,5))
+sns.histplot(data["emission"], kde=True)
+plt.title("Emission Distribution")
+plt.xlabel("Emission")
+plt.ylabel("Count")
+plt.savefig("emission_distribution.png")
+plt.close()
+
+# -------------------------
+# 6. FEATURE & TARGET SPLIT
+# -------------------------
+X = data.drop("emission", axis=1)
+y = data["emission"]
+
+# Keep only numeric features
+X = X.select_dtypes(include=[np.number])
+
+print("\nFeature matrix shape:", X.shape)
+
+# -------------------------
+# 7. TRAIN TEST SPLIT
+# -------------------------
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
+
+print("Training set size:", X_train.shape)
+print("Testing set size:", X_test.shape)
+
+# -------------------------
+# 8. FEATURE SCALING
+# -------------------------
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+print("\nFeature scaling completed.")
+
+# -------------------------
+# 9. MODEL TRAINING
+# -------------------------
+print("\nTraining Random Forest Regressor...\n")
+
+model = RandomForestRegressor(
+    n_estimators=100,
+    random_state=42
+)
+
+model.fit(X_train, y_train)
+
+print("Model training completed!")
+
+# -------------------------
+# 10. PREDICTION
+# -------------------------
+y_pred = model.predict(X_test)
+
+# -------------------------
+# 11. MODEL EVALUATION
+# -------------------------
+mae = mean_absolute_error(y_test, y_pred)
+mse = mean_squared_error(y_test, y_pred)
+r2 = r2_score(y_test, y_pred)
+
+print("\n==============================")
+print("MODEL EVALUATION RESULTS")
+print("==============================")
+print("Mean Absolute Error (MAE):", round(mae, 4))
+print("Mean Squared Error (MSE):", round(mse, 4))
+print("R2 Score:", round(r2, 4))
+
+# -------------------------
+# 12. ACTUAL VS PREDICTED PLOT
+# -------------------------
+plt.figure(figsize=(7,5))
+plt.scatter(y_test, y_pred, alpha=0.5)
+plt.xlabel("Actual Emission")
+plt.ylabel("Predicted Emission")
+plt.title("Actual vs Predicted Emission")
+plt.savefig("actual_vs_predicted.png")
+plt.close()
+
+# -------------------------
+# 13. FEATURE IMPORTANCE
+# -------------------------
+importances = model.feature_importances_
+feature_names = X.columns
+
+feature_importance_df = pd.DataFrame({
+    "Feature": feature_names,
+    "Importance": importances
+}).sort_values(by="Importance", ascending=False).head(10)
+
+print("\nTop 10 Important Features:")
+print(feature_importance_df)
+
+plt.figure(figsize=(8,6))
+sns.barplot(x="Importance", y="Feature", data=feature_importance_df)
+plt.title("Top 10 Feature Importances")
+plt.savefig("feature_importances.png")
+plt.close()
+
+print("\n✅ Project Execution Completed Successfully!")
+print("You can now include results in your internship submission.")
